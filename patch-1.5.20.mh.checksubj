@@ -1,0 +1,102 @@
+diff -r -u mutt-1.5.20/PATCHES mutt-1.5.20-spellcheck/PATCHES
+--- mutt-1.5.20/PATCHES	2008-11-11 14:55:46.000000000 -0500
++++ mutt-1.5.20-spellcheck/PATCHES	2010-02-04 18:16:01.000000000 -0500
+@@ -0,0 +1 @@
++patch-1.5.17.mh.checksubj
+diff -r -u mutt-1.5.20/compose.c mutt-1.5.20-spellcheck/compose.c
+--- mutt-1.5.20/compose.c	2009-03-31 02:52:43.000000000 -0400
++++ mutt-1.5.20-spellcheck/compose.c	2010-02-04 18:16:01.000000000 -0500
+@@ -1177,6 +1177,61 @@
+ 
+       case OP_COMPOSE_ISPELL:
+ 	endwin ();
++/*#ifdef MTH_SUBJECT_SPELLCHECK_HACK*/
++	if (option (OPTSPELLCHECKSUBJECT))
++	{
++		FILE * spellfp;
++		char spellfile[_POSIX_PATH_MAX];
++		size_t subjectlen;
++
++		/* make sure to check for no subject */
++		if (msg->env->subject != NULL && (subjectlen = strlen (msg->env->subject))> 0)
++		{
++			mutt_mktemp (spellfile);
++
++	/* put subject in a file by itself, ispell the file, rewrite the subject in memory */
++			if (!(spellfp = fopen (spellfile, "w")))
++			{
++				mutt_error (_("Can't create file %s"), spellfile);
++				continue;
++			}
++
++			fputs(msg->env->subject,spellfp);
++			fclose(spellfp);
++
++			snprintf (buf, sizeof (buf), "%s -x %s", NONULL(Ispell), spellfile);
++			if (mutt_system (buf) == -1)
++			  mutt_error (_("Error running \"%s\"!"), buf);
++
++			if (!(spellfp = fopen (spellfile, "r")))
++			{
++				mutt_error (_("Can't open file %s"), spellfile);
++				continue;
++			}
++
++			subjectlen = fread(buf, 1, LONG_STRING, spellfp );
++			fclose(spellfp);
++			mutt_unlink (spellfile);
++
++	/*truncate the subject to LONG_STRING of what we got back from ispell*/
++			if (subjectlen < LONG_STRING)
++				buf[subjectlen] = '\0';
++			else
++				buf[LONG_STRING-1] = '\0';
++			
++			mutt_str_replace(&msg->env->subject, buf);
++			mutt_update_encoding (msg->content);
++			menu->redraw |= REDRAW_STATUS; /*TODO Remove? */
++			mutt_str_replace (&msg->env->subject, buf);
++			move (HDR_SUBJECT, HDR_XOFFSET);
++			clrtoeol ();
++			if (msg->env->subject)
++				mutt_paddstr (W, msg->env->subject);
++		
++	/*#endif MTH_SUBJECT_SPELLCHECK_HACK*/
++		}
++	}
++
+ 	snprintf (buf, sizeof (buf), "%s -x %s", NONULL(Ispell), msg->content->filename);
+ 	if (mutt_system (buf) == -1)
+ 	  mutt_error (_("Error running \"%s\"!"), buf);
+Only in mutt-1.5.20-spellcheck/: compose.c.orig
+diff -r -u mutt-1.5.20/init.h mutt-1.5.20-spellcheck/init.h
+--- mutt-1.5.20/init.h	2009-06-13 17:35:21.000000000 -0400
++++ mutt-1.5.20-spellcheck/init.h	2010-02-04 18:16:01.000000000 -0500
+@@ -3088,6 +3088,13 @@
+   ** $$sort_re for a less drastic way of controlling this
+   ** behaviour.
+   */
++  { "spellcheck_subject",	DT_BOOL, R_NONE, OPTSPELLCHECKSUBJECT , 0 },
++  /*
++  ** .pp
++  ** When set, mutt also spellchecks the subject line of a message by
++  ** writing it out to a temp file and envoking the spell check, then
++  ** continues the standard spellcheck as usual
++  */
+   { "suspend",		DT_BOOL, R_NONE, OPTSUSPEND, 1 },
+   /*
+   ** .pp
+Only in mutt-1.5.20-spellcheck/: init.h.orig
+diff -r -u mutt-1.5.20/mutt.h mutt-1.5.20-spellcheck/mutt.h
+--- mutt-1.5.20/mutt.h	2009-06-12 18:15:42.000000000 -0400
++++ mutt-1.5.20-spellcheck/mutt.h	2010-02-04 18:16:01.000000000 -0500
+@@ -422,6 +422,7 @@
+   OPTSIGONTOP,
+   OPTSORTRE,
+   OPTSPAMSEP,
++  OPTSPELLCHECKSUBJECT,
+   OPTSTATUSONTOP,
+   OPTSTRICTTHREADS,
+   OPTSUSPEND,
+Only in mutt-1.5.20-spellcheck/: mutt.h.orig
+Only in mutt-1.5.20-spellcheck/: patch-1.5.17.mh.checksubj
